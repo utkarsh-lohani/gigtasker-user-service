@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -81,5 +82,12 @@ public class UserService {
         User savedUser = userRepository.save(newUser);
 
         return UserDTO.fromEntity(savedUser);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserDTO> findUsersByIds(List<Long> ids) {
+        return userRepository.findByIdIn(ids)
+                .stream()
+                .map(UserDTO::fromEntity).toList();
     }
 }

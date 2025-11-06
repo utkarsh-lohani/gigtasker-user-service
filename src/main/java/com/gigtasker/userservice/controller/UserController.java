@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
@@ -45,5 +47,10 @@ public class UserController {
             // don't have a matching profile in our 'gig_users' table.
             return ResponseEntity.notFound().build();
         }
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<List<UserDTO>> getUsersByIds(@RequestBody List<Long> userIds) {
+        return ResponseEntity.ok(userService.findUsersByIds(userIds));
     }
 }
