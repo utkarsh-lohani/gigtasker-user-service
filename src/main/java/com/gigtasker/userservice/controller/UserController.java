@@ -5,6 +5,7 @@ import com.gigtasker.userservice.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -52,5 +53,19 @@ public class UserController {
     @PostMapping("/batch")
     public ResponseEntity<List<UserDTO>> getUsersByIds(@RequestBody List<Long> userIds) {
         return ResponseEntity.ok(userService.findUsersByIds(userIds));
+    }
+
+    @PostMapping("/{userId}/promote")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> promoteUser(@PathVariable Long userId) {
+        userService.promoteUserToAdmin(userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<UserDTO>> getAllUsers() {
+        // We need to create findAll() in UserService
+        return ResponseEntity.ok(userService.getAllUsers());
     }
 }
