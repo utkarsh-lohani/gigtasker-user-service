@@ -33,11 +33,6 @@ public class UserController {
         }
     }
 
-    @GetMapping("/hello")
-    public String sayHello() {
-        return "Hello from the User Service! ";
-    }
-
     @GetMapping("/me")
     public ResponseEntity<UserDTO> getMyProfile() {
         UserDTO user = userService.getMe();
@@ -56,21 +51,21 @@ public class UserController {
     }
 
     @PostMapping("/{userId}/promote")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Void> promoteUser(@PathVariable Long userId) {
         userService.promoteUserToAdmin(userId);
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{userId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Void> deleteUser(@PathVariable Long userId) {
         userService.deleteUser(userId);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<List<UserDTO>> getAllUsers() {
         // We need to create findAll() in UserService
         return ResponseEntity.ok(userService.getAllUsers());

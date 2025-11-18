@@ -1,33 +1,40 @@
 package com.gigtasker.userservice.configuration;
 
+import org.gigtasker.gigtaskercommon.security.GigTaskerSecurity;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @EnableWebSecurity
+@Import(GigTaskerSecurity.class)
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // We'll still add the basic .cors() to play nice
                 .cors(withDefaults())
-
+                .csrf(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(authorize -> authorize
-                        // We explicitly allow the OPTIONS preflight "ping"
+                        // Global Rules
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                        // We demand a token for EVERYTHING else
+                        // Service-Specific Rules (Example for notification-service only)
+                        // .requestMatchers("/ws/**").permitAll()
                         .anyRequest().authenticated()
-                )
-                .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> {})
+                ).oauth2ResourceServer(oauth2 -> oauth2
+                        // This automatically picks up the 'jwtAuthenticationConverter'
+                        // from GigTaskerSecurity.java
+                        .jwt(withDefaults())
                 );
 
         return http.build();
