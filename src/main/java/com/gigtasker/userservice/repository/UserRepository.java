@@ -2,6 +2,7 @@ package com.gigtasker.userservice.repository;
 
 import com.gigtasker.userservice.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -16,4 +17,12 @@ public interface UserRepository extends JpaRepository<User,Long> {
 
     @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.roles")
     List<User> findAllWithRoles();
+
+    @Modifying
+    @Query(value = "DELETE FROM gig_users WHERE id = :id", nativeQuery = true)
+    void hardDeleteById(Long id);
+
+    @Modifying
+    @Query(value = "DELETE FROM users_roles WHERE user_id = :id", nativeQuery = true)
+    void removeAllRoles(Long id);
 }

@@ -7,9 +7,11 @@ import com.gigtasker.userservice.exceptions.KeycloakException;
 import com.gigtasker.userservice.exceptions.ResourceNotFoundException;
 import com.gigtasker.userservice.interfaces.RoleService;
 import com.gigtasker.userservice.repository.UserRepository;
+import jakarta.ws.rs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
@@ -76,6 +78,9 @@ public class UserService {
         Jwt jwt = (Jwt) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         String email = jwt.getClaimAsString("email");
 
+        String sub = jwt.getClaimAsString("sub");
+        UUID keycloakId = UUID.fromString(sub);
+
         // 1. Get raw strings from token
         List<String> rawRoles = extractRolesFromToken(jwt);
 
@@ -83,7 +88,14 @@ public class UserService {
         Set<Role> syncedRoles = processRoles(rawRoles);
 
         User user = userRepository.findByEmail(email)
-                .orElseGet(() -> createNewUserFromJwt(jwt, syncedRoles));
+                .orElseGet(() -> createNewUserFromJwt(jwt, syncedRoles, keycloakId));
+
+        boolean changed = false;
+
+        if (user.getKeycloakId() == null) {
+            user.setKeycloakId(keycloakId);
+            changed = true;
+        }
 
         // 3. Sync DB if different
         // (We compare the Sets of names to see if they changed)
@@ -92,15 +104,20 @@ public class UserService {
 
         if (!currentRoleNames.equals(newRoleNames)) {
             user.setRoles(syncedRoles);
-            user = userRepository.save(user);
             log.info("Synced roles for user {}: {}", email, newRoleNames);
+            changed = true;
+        }
+
+        if (changed) {
+            user = userRepository.save(user);
         }
 
         return UserDTO.fromEntity(user);
     }
 
-    private User createNewUserFromJwt(Jwt jwt, Set<Role> roles) {
+    private User createNewUserFromJwt(Jwt jwt, Set<Role> roles, UUID keycloakId) {
         User newUser = User.builder()
+                .keycloakId(keycloakId)
                 .email(jwt.getClaimAsString("email"))
                 .username(jwt.getClaimAsString("preferred_username"))
                 .firstName(jwt.getClaimAsString("given_name"))
@@ -115,14 +132,12 @@ public class UserService {
 
         for (String roleName : rawRoles) {
 
-            // --- 2. THE WHITELIST CHECK ---
+            // --- THE WHITELIST CHECK ---
             // If we don't explicitly know this role, skip it.
             if (!ALLOWED_ROLES.contains(roleName)) {
                 continue;
             }
-
             Role role = roleService.getRoleOrSave(roleName);
-
             result.add(role);
         }
 
@@ -190,19 +205,50 @@ public class UserService {
 
     @Transactional
     public void deleteUser(Long userId) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        updateKeycloakStatus(user.getKeycloakId(), false);
+
+        try {
+            userRepository.delete(user);
+        } catch (Exception e) {
+            log.error("DB delete failed, re-enabling Keycloak user to maintain consistency");
+            updateKeycloakStatus(user.getKeycloakId(), true);
+            throw e;
+        }
+
+        log.info("User {} soft-deleted (Disabled in Keycloak, IsDeleted=true in DB)", user.getEmail());
+    }
+
+    private void updateKeycloakStatus(UUID keycloakId, boolean enabled) {
+        try {
+            UserResource userResource = keycloakBot.realm(GIGTASKER).users().get(keycloakId.toString());
+
+            UserRepresentation representation = userResource.toRepresentation();
+            representation.setEnabled(enabled);
+
+            userResource.update(representation);
+        } catch (Exception e) {
+            log.error("Failed to update Keycloak status", e);
+            throw new KeycloakException("External Identity Error");
+        }
+    }
+
+    @Transactional
+    public void purgeUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         try {
-            List<UserRepresentation> kcUsers = keycloakBot.realm(GIGTASKER).users().searchByEmail(user.getEmail(), true);
-            if (!kcUsers.isEmpty()) {
-                keycloakBot.realm(GIGTASKER).users().get(kcUsers.getFirst().getId()).remove();
-            }
-        } catch (Exception e) {
-            log.error("Keycloak delete failed", e);
-            throw new KeycloakException("Failed to delete user from Keycloak");
+            keycloakBot.realm(GIGTASKER).users().get(user.getKeycloakId().toString()).remove();
+        } catch (NotFoundException e) {
+            log.warn("User already gone from Keycloak {}", e.getMessage());
         }
-        userRepository.delete(user);
+
+        userRepository.removeAllRoles(userId);
+        userRepository.hardDeleteById(userId);
+
+        log.info("User {} PERMANENTLY deleted.", user.getEmail());
     }
 
     @Transactional(readOnly = true)
