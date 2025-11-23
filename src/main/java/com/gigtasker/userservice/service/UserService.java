@@ -63,14 +63,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserDTO getUserById(Long id) {
-        return userRepository.findById(id)
-                // Use the builder in your .map() function
-                .map(user -> UserDTO.builder()
-                        .id(user.getId())
-                        .username(user.getUsername())
-                        .email(user.getEmail())
-                        .build())
-                .orElse(null);
+        return userRepository.findByIdWithRoles(id).map(UserDTO::fromEntity).orElse(null);
     }
 
     @Transactional

@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -21,6 +22,7 @@ public class UserDTO {
     private String firstName;
     private String lastName;
     private List<String> roles;
+    private UUID keycloakId;
 
     public static UserDTO fromEntity(User user) {
         return UserDTO.builder()
@@ -29,6 +31,7 @@ public class UserDTO {
                 .email(user.getEmail())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
+                .keycloakId(user.getKeycloakId())
                 .roles(user.getRoles().stream().map(Role::getName).toList())
                 .build();
     }
