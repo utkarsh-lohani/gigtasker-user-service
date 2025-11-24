@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1-static-data-insertion-roles-gender
+      author: gigtasker-author
+      changes:
+        - sqlFile:
+            path: db/changelog/changes/sql-files/001-static-data-gender-roles.sql

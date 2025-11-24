@@ -1,0 +1,3 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/data-insertion/001-static-data-gender-roles.yaml

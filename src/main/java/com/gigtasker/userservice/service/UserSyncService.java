@@ -2,6 +2,7 @@ package com.gigtasker.userservice.service;
 
 import com.gigtasker.userservice.entity.Role;
 import com.gigtasker.userservice.entity.User;
+import com.gigtasker.userservice.enums.RoleType;
 import com.gigtasker.userservice.repository.RoleRepository;
 import com.gigtasker.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -59,8 +59,7 @@ public class UserSyncService {
 
     private void createUserFromKeycloak(UserRepresentation kcUser) {
         // Default role
-        Role userRole = roleRepository.findByName("ROLE_USER")
-                .orElseGet(() -> roleRepository.save(Role.builder().name("ROLE_USER").build()));
+        Role userRole = roleRepository.findByRoleName(RoleType.ROLE_USER).orElseThrow(() -> new NullPointerException("Role Not Found"));
 
         User newUser = User.builder()
                 .keycloakId(UUID.fromString(kcUser.getId()))
@@ -69,7 +68,7 @@ public class UserSyncService {
                 .firstName(kcUser.getFirstName())
                 .lastName(kcUser.getLastName())
                 .isDeleted(!kcUser.isEnabled()) // Sync disabled status
-                .roles(new HashSet<>(Set.of(userRole)))
+                .roles(Set.of(userRole))
                 .build();
 
         userRepository.save(newUser);

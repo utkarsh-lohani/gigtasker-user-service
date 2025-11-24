@@ -1,0 +1,55 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-roles-table
+      author: utkarsh.lohani
+      changes:
+        - createTable:
+            tableName: roles
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  name: name
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+
+              - column:
+                  name: description
+                  type: VARCHAR(255)
+
+        # Unique index on enum name (ROLE_ADMIN, ROLE_USER, etc.)
+        - createIndex:
+            indexName: idx_roles_name
+            tableName: roles
+            unique: true
+            columns:
+              - column:
+                  name: name
+
+        # Optional index for searching on description
+        - createIndex:
+            indexName: idx_roles_description
+            tableName: roles
+            columns:
+              - column:
+                  name: description
+
+      rollback:
+        - dropIndex:
+            tableName: roles
+            indexName: idx_roles_description
+
+        - dropIndex:
+            tableName: roles
+            indexName: idx_roles_name
+
+        - dropTable:
+            tableName: roles

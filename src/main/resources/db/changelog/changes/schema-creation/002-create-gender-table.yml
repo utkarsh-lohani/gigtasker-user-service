@@ -1,0 +1,55 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-genders-table
+      author: yourname
+      changes:
+        - createTable:
+            tableName: genders
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  name: name
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+
+              - column:
+                  name: description
+                  type: VARCHAR(255)
+
+        # Index on name (ENUM stored as string)
+        - createIndex:
+            indexName: idx_genders_name
+            tableName: genders
+            unique: true
+            columns:
+              - column:
+                  name: name
+
+        # Optional index on description (for search)
+        - createIndex:
+            indexName: idx_genders_description
+            tableName: genders
+            columns:
+              - column:
+                  name: description
+
+      rollback:
+        - dropIndex:
+            tableName: genders
+            indexName: idx_genders_description
+
+        - dropIndex:
+            tableName: genders
+            indexName: idx_genders_name
+
+        - dropTable:
+            tableName: genders

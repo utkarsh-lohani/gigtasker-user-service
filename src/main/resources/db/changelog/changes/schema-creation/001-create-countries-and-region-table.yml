@@ -1,0 +1,199 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-regions-table
+      author: utkarsh.lohani
+      changes:
+        - createTable:
+            tableName: regions
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+
+        - createIndex:
+            indexName: idx_regions_name
+            tableName: regions
+            columns:
+              - column:
+                  name: name
+
+      rollback:
+        - dropIndex:
+            tableName: regions
+            indexName: idx_regions_name
+        - dropTable:
+            tableName: regions
+
+  # -----------------------------------------
+  # SubRegion table
+  # -----------------------------------------
+  - changeSet:
+      id: create-subregions-table
+      author: yourname
+      changes:
+        - createTable:
+            tableName: subregions
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: region_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseColumnNames: region_id
+            baseTableName: subregions
+            constraintName: fk_subregion_region
+            referencedTableName: regions
+            referencedColumnNames: id
+            onDelete: CASCADE
+
+        - createIndex:
+            indexName: idx_subregions_region_id
+            tableName: subregions
+            columns:
+              - column:
+                  name: region_id
+
+        - createIndex:
+            indexName: idx_subregions_name
+            tableName: subregions
+            columns:
+              - column:
+                  name: name
+
+      rollback:
+        - dropIndex:
+            tableName: subregions
+            indexName: idx_subregions_name
+
+        - dropIndex:
+            tableName: subregions
+            indexName: idx_subregions_region_id
+
+        - dropForeignKeyConstraint:
+            baseTableName: subregions
+            constraintName: fk_subregion_region
+
+        - dropTable:
+            tableName: subregions
+
+  # -----------------------------------------
+  # Country table
+  # -----------------------------------------
+  - changeSet:
+      id: create-countries-table
+      author: utkarsh.lohani
+      changes:
+        - createTable:
+            tableName: countries
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+
+              - column:
+                  name: iso_code
+                  type: VARCHAR(2)
+                  constraints:
+                    nullable: false
+                    unique: true
+
+              - column:
+                  name: phone_code
+                  type: VARCHAR(10)
+
+              - column:
+                  name: currency_code
+                  type: VARCHAR(10)
+
+              - column:
+                  name: region_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: countries
+            baseColumnNames: region_id
+            constraintName: fk_country_region
+            referencedTableName: regions
+            referencedColumnNames: id
+            onDelete: RESTRICT
+
+        - createIndex:
+            indexName: idx_countries_region_id
+            tableName: countries
+            columns:
+              - column:
+                  name: region_id
+
+        - createIndex:
+            indexName: idx_countries_name
+            tableName: countries
+            columns:
+              - column:
+                  name: name
+
+        - createIndex:
+            indexName: idx_countries_iso_code
+            tableName: countries
+            columns:
+              - column:
+                  name: iso_code
+
+      rollback:
+        - dropIndex:
+            tableName: countries
+            indexName: idx_countries_iso_code
+
+        - dropIndex:
+            tableName: countries
+            indexName: idx_countries_name
+
+        - dropIndex:
+            tableName: countries
+            indexName: idx_countries_region_id
+
+        - dropForeignKeyConstraint:
+            baseTableName: countries
+            constraintName: fk_country_region
+
+        - dropTable:
+            tableName: countries

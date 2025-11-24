@@ -3,9 +3,9 @@ package com.gigtasker.userservice.service;
 import com.gigtasker.userservice.dto.UserDTO;
 import com.gigtasker.userservice.entity.Role;
 import com.gigtasker.userservice.entity.User;
+import com.gigtasker.userservice.enums.RoleType;
 import com.gigtasker.userservice.exceptions.KeycloakException;
 import com.gigtasker.userservice.exceptions.ResourceNotFoundException;
-import com.gigtasker.userservice.interfaces.RoleService;
 import com.gigtasker.userservice.repository.UserRepository;
 import jakarta.ws.rs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -37,11 +37,8 @@ public class UserService {
     private final Keycloak keycloakBot;
     private final RoleService roleService;
 
-    private static final String ROLE_USER = "ROLE_USER";
     private static final String ROLE_ADMIN = "ROLE_ADMIN";
     private static final String GIGTASKER = "gigtasker";
-
-    private static final List<String> ALLOWED_ROLES = List.of(ROLE_USER, ROLE_ADMIN);
 
     public UserService(UserRepository userRepository,
                        @Qualifier("keycloakBot") Keycloak keycloakBot, RoleService roleService) {
@@ -66,75 +63,32 @@ public class UserService {
         return userRepository.findByIdWithRoles(id).map(UserDTO::fromEntity).orElse(null);
     }
 
+    @Transactional(readOnly = true)
+    public UserDTO getUserByEmail(String email) {
+        return userRepository.findByEmail(email).map(UserDTO::fromEntity).orElse(null);
+    }
+
     @Transactional
     public UserDTO getMe() {
         Jwt jwt = (Jwt) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         String email = jwt.getClaimAsString("email");
 
-        String sub = jwt.getClaimAsString("sub");
-        UUID keycloakId = UUID.fromString(sub);
-
-        // 1. Get raw strings from token
-        List<String> rawRoles = extractRolesFromToken(jwt);
-
-        // 2. Convert strings to Role Entities (Filtering & Creating as needed)
-        Set<Role> syncedRoles = processRoles(rawRoles);
-
         User user = userRepository.findByEmail(email)
-                .orElseGet(() -> createNewUserFromJwt(jwt, syncedRoles, keycloakId));
+                .orElseThrow(() -> new ResourceNotFoundException("User profile not found. Please register via the app."));
 
-        boolean changed = false;
+        List<String> rolesFromToken = extractRolesFromToken(jwt);
+        Set<Role> syncedRoles = roleService.processRoles(rolesFromToken);
 
-        if (user.getKeycloakId() == null) {
-            user.setKeycloakId(keycloakId);
-            changed = true;
-        }
-
-        // 3. Sync DB if different
-        // (We compare the Sets of names to see if they changed)
-        Set<String> currentRoleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
-        Set<String> newRoleNames = syncedRoles.stream().map(Role::getName).collect(Collectors.toSet());
+        Set<RoleType> currentRoleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
+        Set<RoleType> newRoleNames = syncedRoles.stream().map(Role::getName).collect(Collectors.toSet());
 
         if (!currentRoleNames.equals(newRoleNames)) {
+            log.info("Syncing roles for user {}", email);
             user.setRoles(syncedRoles);
-            log.info("Synced roles for user {}: {}", email, newRoleNames);
-            changed = true;
-        }
-
-        if (changed) {
             user = userRepository.save(user);
         }
 
         return UserDTO.fromEntity(user);
-    }
-
-    private User createNewUserFromJwt(Jwt jwt, Set<Role> roles, UUID keycloakId) {
-        User newUser = User.builder()
-                .keycloakId(keycloakId)
-                .email(jwt.getClaimAsString("email"))
-                .username(jwt.getClaimAsString("preferred_username"))
-                .firstName(jwt.getClaimAsString("given_name"))
-                .lastName(jwt.getClaimAsString("family_name"))
-                .roles(roles)
-                .build();
-        return userRepository.save(newUser);
-    }
-
-    private Set<Role> processRoles(List<String> rawRoles) {
-        Set<Role> result = new HashSet<>();
-
-        for (String roleName : rawRoles) {
-
-            // --- THE WHITELIST CHECK ---
-            // If we don't explicitly know this role, skip it.
-            if (!ALLOWED_ROLES.contains(roleName)) {
-                continue;
-            }
-            Role role = roleService.getRoleOrSave(roleName);
-            result.add(role);
-        }
-
-        return result;
     }
 
     @SuppressWarnings("unchecked")
@@ -153,47 +107,40 @@ public class UserService {
 
     @Transactional
     public void promoteUserToAdmin(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found in local DB"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found in local DB"));
 
         RealmResource realm = keycloakBot.realm(GIGTASKER);
         UsersResource usersResource = realm.users();
 
         try {
-            // A. Find Keycloak ID
+            // 1. Find Keycloak User (Use UUID from DB is safer if you have it populated)
             List<UserRepresentation> kcUsers = usersResource.searchByEmail(user.getEmail(), true);
             if (kcUsers.isEmpty()) throw new ResourceNotFoundException("User missing in Keycloak");
             String keycloakUserId = kcUsers.getFirst().getId();
 
-            // B. Add to Group "GIGTASKER_ADMIN_USERS"
-            List<GroupRepresentation> groups = realm.groups().groups("GIGTASKER_ADMIN_USERS", 0, 1);
-            if (groups.isEmpty()) throw new ResourceNotFoundException("Admin Group missing in Keycloak.");
-            usersResource.get(keycloakUserId).joinGroup(groups.getFirst().getId());
-
-            // C. Assign ADMIN Role
+            // 2. Assign ADMIN Role in Keycloak
             RoleRepresentation adminRole = realm.roles().get(ROLE_ADMIN).toRepresentation();
             usersResource.get(keycloakUserId).roles().realmLevel().add(List.of(adminRole));
 
+            // 3. Add to Admin Group (Optional, only if you use groups)
+            List<GroupRepresentation> groups = realm.groups().groups("GIGTASKER_ADMIN_USERS", 0, 1);
+            if (!groups.isEmpty()) {
+                usersResource.get(keycloakUserId).joinGroup(groups.getFirst().getId());
+            }
+
         } catch (Exception e) {
-            log.error("Keycloak update failed", e);
+            log.error("Keycloak promotion failed", e);
             throw new KeycloakException("Failed to promote user in Keycloak");
         }
 
-        // D. Update Local DB
-        // 1. Check if they already have the role (by comparing Strings)
-        boolean alreadyHasRole = user.getRoles().stream()
-                .anyMatch(r -> r.getName().equals(ROLE_ADMIN));
+        // 4. Update Local DB
+        Role adminRoleEntity = roleService.findRoleByName(RoleType.ROLE_ADMIN)
+                .orElseThrow(() -> new RuntimeException("ROLE_ADMIN not found in DB"));
 
-        if (!alreadyHasRole) {
-            // 2. We must fetch the actual Role ENTITY from the database
-            Role adminRoleEntity = roleService.getRoleOrSave(ROLE_ADMIN);
-
-            // 3. Add the ENTITY, not the String
-            user.getRoles().add(adminRoleEntity);
-
-            // 4. Save the user
-            userRepository.save(user);
-            log.info("Local DB: Assigned {} role to {}", ROLE_ADMIN, user.getEmail());
-        }
+        user.getRoles().add(adminRoleEntity);
+        userRepository.save(user);
+        log.info("Promoted {} to ADMIN", user.getEmail());
     }
 
     @Transactional

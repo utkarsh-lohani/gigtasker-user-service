@@ -1,0 +1,5 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/schema-creation/master-changelog-schema-creation.yml
+  - include:
+      file: db/changelog/changes/data-insertion/master-static-data-insertion.yml

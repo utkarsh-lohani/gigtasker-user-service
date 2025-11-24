@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +51,16 @@ public class User {
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
+
+    private LocalDate dateOfBirth;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "gender_id")
+    private Gender gender;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "country_id")
+    private Country country;
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private String fullName() {

@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - include: 
+      file: db/changelog/changes/schema-creation/001-create-countries-and-region-table.yml
+  - include:
+      file: db/changelog/changes/schema-creation/002-create-gender-table.yml
+  - include:
+      file: db/changelog/changes/schema-creation/003-create-roles-table.yml
+  - include:
+      file: db/changelog/changes/schema-creation/004-create-users-table.yml
