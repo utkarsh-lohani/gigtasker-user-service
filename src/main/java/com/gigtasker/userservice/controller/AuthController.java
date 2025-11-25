@@ -1,6 +1,7 @@
 package com.gigtasker.userservice.controller;
 
 import com.gigtasker.userservice.dto.LoginRequest;
+import com.gigtasker.userservice.dto.RefreshRequest;
 import com.gigtasker.userservice.dto.RegistrationRequest;
 import com.gigtasker.userservice.dto.UserDTO;
 import com.gigtasker.userservice.service.AuthService;
@@ -29,5 +30,10 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest req) throws LoginException {
         return ResponseEntity.ok(authService.login(req));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<Map<String, Object>> refresh(@RequestBody RefreshRequest req) throws LoginException {
+        return ResponseEntity.ok(authService.refresh(req));
     }
 }

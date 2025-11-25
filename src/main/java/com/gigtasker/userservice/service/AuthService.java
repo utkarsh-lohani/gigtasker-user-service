@@ -1,6 +1,7 @@
 package com.gigtasker.userservice.service;
 
 import com.gigtasker.userservice.dto.LoginRequest;
+import com.gigtasker.userservice.dto.RefreshRequest;
 import com.gigtasker.userservice.dto.RegistrationRequest;
 import com.gigtasker.userservice.dto.UserDTO;
 import com.gigtasker.userservice.entity.Role;
@@ -21,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
 import javax.security.auth.login.LoginException;
@@ -88,16 +90,31 @@ public class AuthService {
 
     public Map<String, Object> login(LoginRequest req) throws LoginException {
 
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("client_id", "gigtasker-angular");
+        body.add("username", req.username());
+        body.add("password", req.password());
+        body.add("grant_type", "password");
+        // scope=offline_access is required to get a refresh token
+        body.add("scope", "openid profile email offline_access");
+
+        return callKeycloakTokenEndpoint(body);
+    }
+
+    public Map<String, Object> refresh(RefreshRequest req) throws LoginException {
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("client_id", "gigtasker-angular");
+        body.add("grant_type", "refresh_token");
+        body.add("refresh_token", req.refreshToken());
+
+        return callKeycloakTokenEndpoint(body);
+    }
+
+    private Map<String, Object> callKeycloakTokenEndpoint(MultiValueMap<String, String> formData) throws LoginException {
         String tokenEndpoint = String.format(
                 "%s/realms/%s/protocol/openid-connect/token",
                 keycloakUrl, realm
         );
-
-        LinkedMultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
-        formData.add("client_id", "gigtasker-angular");
-        formData.add("username", req.username());
-        formData.add("password", req.password());
-        formData.add("grant_type", "password");
 
         try {
             return restClient.post()

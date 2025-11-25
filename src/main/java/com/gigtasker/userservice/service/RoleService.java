@@ -39,7 +39,6 @@ public class RoleService {
                 // 3. If Keycloak sends a role we don't know (e.g. "offline_access"), IGNORE it.
                 // This prevents the app from crashing on unknown roles.
                 log.trace("Ignoring unknown Keycloak role: {}", roleName);
-                throw new KeycloakException(e.getMessage());
             }
         }
 
