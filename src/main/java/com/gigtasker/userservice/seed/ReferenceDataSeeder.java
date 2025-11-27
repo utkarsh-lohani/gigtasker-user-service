@@ -2,10 +2,16 @@ package com.gigtasker.userservice.seed;
 
 import com.gigtasker.userservice.dto.RegistrationRequest;
 import com.gigtasker.userservice.dto.RestCountry;
-import com.gigtasker.userservice.entity.*;
+import com.gigtasker.userservice.entity.Country;
+import com.gigtasker.userservice.entity.Gender;
+import com.gigtasker.userservice.entity.Region;
+import com.gigtasker.userservice.entity.SubRegion;
 import com.gigtasker.userservice.enums.GenderType;
 import com.gigtasker.userservice.enums.RoleType;
-import com.gigtasker.userservice.repository.*;
+import com.gigtasker.userservice.repository.CountryRepository;
+import com.gigtasker.userservice.repository.GenderRepository;
+import com.gigtasker.userservice.repository.RegionRepository;
+import com.gigtasker.userservice.repository.SubRegionRepository;
 import com.gigtasker.userservice.service.AuthService;
 import com.gigtasker.userservice.service.RestCountriesService;
 import com.gigtasker.userservice.service.UserService;

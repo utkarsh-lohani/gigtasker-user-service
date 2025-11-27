@@ -2,7 +2,10 @@ package com.gigtasker.userservice.entity;
 
 import com.gigtasker.userservice.enums.GenderType;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "genders")

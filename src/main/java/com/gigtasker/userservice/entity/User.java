@@ -62,6 +62,9 @@ public class User {
     @JoinColumn(name = "country_id")
     private Country country;
 
+    @Column(name = "profile_image_url")
+    private String profileImageUrl;
+
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private String fullName() {
         return firstName + " " + lastName;

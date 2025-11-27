@@ -2,7 +2,6 @@ package com.gigtasker.userservice.dto;
 
 import com.gigtasker.userservice.entity.Country;
 import com.gigtasker.userservice.entity.Gender;
-import com.gigtasker.userservice.entity.Role;
 import com.gigtasker.userservice.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

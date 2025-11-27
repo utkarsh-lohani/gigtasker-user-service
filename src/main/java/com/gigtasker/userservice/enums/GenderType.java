@@ -10,5 +10,5 @@ public enum GenderType {
     TWO_SPIRIT,
     TRANSGENDER,
     PREFER_NOT_TO_SAY,
-    OTHER
+    OTHERS
 }

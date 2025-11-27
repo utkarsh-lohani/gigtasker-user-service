@@ -1,9 +1,8 @@
 package com.gigtasker.userservice.controller;
 
-import com.gigtasker.userservice.entity.Country;
-import com.gigtasker.userservice.entity.Gender;
-import com.gigtasker.userservice.repository.CountryRepository;
-import com.gigtasker.userservice.repository.GenderRepository;
+import com.gigtasker.userservice.dto.CountryDTO;
+import com.gigtasker.userservice.dto.GenderDTO;
+import com.gigtasker.userservice.service.ReferenceDataService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,16 +16,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ReferenceController {
 
-    private final CountryRepository countryRepository;
-    private final GenderRepository genderRepository;
+    private final ReferenceDataService referenceDataService;
 
     @GetMapping("/countries")
-    public ResponseEntity<List<Country>> getAllCountries() {
-        return ResponseEntity.ok(countryRepository.findAllByOrderByNameAsc());
+    public ResponseEntity<List<CountryDTO>> getAllCountries() {
+        return ResponseEntity.ok(referenceDataService.getAllCountries());
     }
 
     @GetMapping("/genders")
-    public ResponseEntity<List<Gender>> getAllGenders() {
-        return ResponseEntity.ok(genderRepository.findAll());
+    public ResponseEntity<List<GenderDTO>> getAllGenders() {
+        return ResponseEntity.ok(referenceDataService.getAllGenders());
     }
 }

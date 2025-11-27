@@ -1,11 +1,16 @@
 package com.gigtasker.userservice.service;
 
 import com.gigtasker.userservice.dto.UserDTO;
+import com.gigtasker.userservice.dto.UserUpdateDTO;
+import com.gigtasker.userservice.entity.Country;
+import com.gigtasker.userservice.entity.Gender;
 import com.gigtasker.userservice.entity.Role;
 import com.gigtasker.userservice.entity.User;
 import com.gigtasker.userservice.enums.RoleType;
 import com.gigtasker.userservice.exceptions.KeycloakException;
 import com.gigtasker.userservice.exceptions.ResourceNotFoundException;
+import com.gigtasker.userservice.repository.CountryRepository;
+import com.gigtasker.userservice.repository.GenderRepository;
 import com.gigtasker.userservice.repository.UserRepository;
 import jakarta.ws.rs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -17,10 +22,12 @@ import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -29,22 +36,28 @@ import java.util.stream.Collectors;
 @Service
 public class UserService {
 
-    // Using Spring Transactional because it's much powerful
-    // readonly = true in Transactional indicates JPA/Hibernate that to not bother dirty checking those objects as I'm not saving anything
-    // Or in other word telling DB that it's just a select query
-
     private final UserRepository userRepository;
     private final Keycloak keycloakBot;
     private final RoleService roleService;
+    private final StorageService storageService;
+    private final CountryRepository countryRepository;
+    private final GenderRepository genderRepository;
 
     private static final String ROLE_ADMIN = "ROLE_ADMIN";
     private static final String GIGTASKER = "gigtasker";
 
-    public UserService(UserRepository userRepository,
-                       @Qualifier("keycloakBot") Keycloak keycloakBot, RoleService roleService) {
+    @Value("${cloud.aws.s3.bucket}")
+    private String bucketName;
+
+    public UserService(UserRepository userRepository, StorageService storageService,
+                       @Qualifier("keycloakBot") Keycloak keycloakBot, RoleService roleService,
+                       CountryRepository countryRepository, GenderRepository genderRepository) {
         this.userRepository = userRepository;
         this.keycloakBot = keycloakBot;
         this.roleService = roleService;
+        this.storageService = storageService;
+        this.countryRepository = countryRepository;
+        this.genderRepository = genderRepository;
     }
 
     @Transactional
@@ -70,7 +83,8 @@ public class UserService {
 
     @Transactional
     public UserDTO getMe() {
-        Jwt jwt = (Jwt) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Jwt jwt = (Jwt) Objects.requireNonNull(SecurityContextHolder.getContext().getAuthentication()).getPrincipal();
+        assert jwt != null;
         String email = jwt.getClaimAsString("email");
 
         User user = userRepository.findByEmail(email)
@@ -194,5 +208,51 @@ public class UserService {
     @Transactional(readOnly = true)
     public List<UserDTO> getAllUsers() {
         return userRepository.findAllWithRoles().stream().map(UserDTO::fromEntity).toList();
+    }
+
+    @Transactional
+    public UserDTO updateUser(UUID keycloakId, UserUpdateDTO updates) {
+        User user = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        return performUpdate(user, updates);
+    }
+
+    private UserDTO performUpdate(User user, UserUpdateDTO updates) {
+        // Apply updates (Partial update logic)
+        if (updates.firstName() != null) user.setFirstName(updates.firstName());
+        if (updates.lastName() != null) user.setLastName(updates.lastName());
+        if (updates.dateOfBirth() != null) user.setDateOfBirth(updates.dateOfBirth());
+
+        // Handle Foreign Keys
+        if (updates.genderId() != null) {
+            Gender gender = genderRepository.findById(updates.genderId())
+                    .orElseThrow(() -> new RuntimeException("Invalid Gender ID"));
+            user.setGender(gender);
+        }
+
+        if (updates.countryId() != null) {
+            Country country = countryRepository.findById(updates.countryId())
+                    .orElseThrow(() -> new RuntimeException("Invalid Country ID"));
+            user.setCountry(country);
+        }
+
+        User savedUser = userRepository.save(user);
+        log.info("Updated profile for user: {}", user.getEmail());
+        return UserDTO.fromEntity(savedUser);
+    }
+
+    @Transactional
+    public UserDTO updateProfileImage(UUID keycloakId, MultipartFile file) {
+        User user = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Upload to MinIO -> Returns key (e.g., "avatars/uuid.jpg")
+        String imageKey = storageService.uploadProfileImage(keycloakId, file);
+
+        // Update DB
+        user.setProfileImageUrl(imageKey);
+
+        return UserDTO.fromEntity(userRepository.save(user));
     }
 }

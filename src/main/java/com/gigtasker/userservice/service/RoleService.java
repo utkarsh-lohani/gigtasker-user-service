@@ -2,7 +2,6 @@ package com.gigtasker.userservice.service;
 
 import com.gigtasker.userservice.entity.Role;
 import com.gigtasker.userservice.enums.RoleType;
-import com.gigtasker.userservice.exceptions.KeycloakException;
 import com.gigtasker.userservice.repository.RoleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -64,6 +64,10 @@ databaseChangeLog:
                   name: country_id
                   type: BIGINT
 
+              - column:
+                  name: profile_image_url
+                  type: text
+
         # Foreign key gender_id → genders.id
         - addForeignKeyConstraint:
             baseTableName: gig_users
