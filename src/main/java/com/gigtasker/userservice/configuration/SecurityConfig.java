@@ -1,7 +1,7 @@
 package com.gigtasker.userservice.configuration;
 
-import org.gigtasker.gigtaskercommon.security.GigTaskerSecurity;
-import org.gigtasker.gigtaskercommon.security.SecurityCustomizer;
+import org.gigtasker.common.security.GigTaskerSecurity;
+import org.gigtasker.common.security.SecurityCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
