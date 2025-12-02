@@ -1,6 +1,6 @@
 INSERT INTO roles (name, description) VALUES
-                                          ('ROLE_USER', 'Standard User'),
-                                          ('ROLE_ADMIN', 'Administrator');
+                                          ('ROLE_USER', 'Standard platform user'),
+                                          ('ROLE_ADMIN', 'Administrator with elevated privileges');
 
 INSERT INTO genders (name, description) VALUES
                                ('MAN', 'Man'),

@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Repository
-public interface UserRepository extends JpaRepository<User,Long> {
+public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
     List<User> findByIdIn(List<Long> ids);
@@ -24,7 +24,7 @@ public interface UserRepository extends JpaRepository<User,Long> {
     List<User> findAllWithRoles();
 
     @Modifying
-    @Query(value = "DELETE FROM gig_users WHERE id = :id", nativeQuery = true)
+    @Query(value = "DELETE FROM users WHERE id = :id", nativeQuery = true)
     void hardDeleteById(Long id);
 
     @Modifying

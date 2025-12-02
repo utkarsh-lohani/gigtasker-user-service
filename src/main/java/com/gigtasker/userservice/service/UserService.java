@@ -15,11 +15,7 @@ import com.gigtasker.userservice.repository.UserRepository;
 import jakarta.ws.rs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
-import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
-import org.keycloak.admin.client.resource.UsersResource;
-import org.keycloak.representations.idm.GroupRepresentation;
-import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,14 +38,14 @@ public class UserService {
     private final StorageService storageService;
     private final CountryRepository countryRepository;
     private final GenderRepository genderRepository;
+    private final KeycloakService keycloakService;
 
-    private static final String ROLE_ADMIN = "ROLE_ADMIN";
     private static final String GIGTASKER = "gigtasker";
 
     @Value("${cloud.aws.s3.bucket}")
     private String bucketName;
 
-    public UserService(UserRepository userRepository, StorageService storageService,
+    public UserService(UserRepository userRepository, StorageService storageService, KeycloakService keycloakService,
                        @Qualifier("keycloakBot") Keycloak keycloakBot, RoleService roleService,
                        CountryRepository countryRepository, GenderRepository genderRepository) {
         this.userRepository = userRepository;
@@ -58,7 +54,10 @@ public class UserService {
         this.storageService = storageService;
         this.countryRepository = countryRepository;
         this.genderRepository = genderRepository;
+        this.keycloakService = keycloakService;
     }
+
+    private static final String USER_NOT_FOUND = "User not found";
 
     @Transactional
     public UserDTO createUser(UserDTO userDTO) {
@@ -121,45 +120,31 @@ public class UserService {
 
     @Transactional
     public void promoteUserToAdmin(Long userId) {
+
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found in local DB"));
+                .orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND));
 
-        RealmResource realm = keycloakBot.realm(GIGTASKER);
-        UsersResource usersResource = realm.users();
-
-        try {
-            // 1. Find Keycloak User (Use UUID from DB is safer if you have it populated)
-            List<UserRepresentation> kcUsers = usersResource.searchByEmail(user.getEmail(), true);
-            if (kcUsers.isEmpty()) throw new ResourceNotFoundException("User missing in Keycloak");
-            String keycloakUserId = kcUsers.getFirst().getId();
-
-            // 2. Assign ADMIN Role in Keycloak
-            RoleRepresentation adminRole = realm.roles().get(ROLE_ADMIN).toRepresentation();
-            usersResource.get(keycloakUserId).roles().realmLevel().add(List.of(adminRole));
-
-            // 3. Add to Admin Group (Optional, only if you use groups)
-            List<GroupRepresentation> groups = realm.groups().groups("GIGTASKER_ADMIN_USERS", 0, 1);
-            if (!groups.isEmpty()) {
-                usersResource.get(keycloakUserId).joinGroup(groups.getFirst().getId());
-            }
-
-        } catch (Exception e) {
-            log.error("Keycloak promotion failed", e);
-            throw new KeycloakException("Failed to promote user in Keycloak");
+        String keycloakUserId = keycloakService.findUserIdByEmail(user.getEmail());
+        if (keycloakUserId == null) {
+            throw new ResourceNotFoundException("User missing in Keycloak");
         }
 
-        // 4. Update Local DB
-        Role adminRoleEntity = roleService.findRoleByName(RoleType.ROLE_ADMIN)
-                .orElseThrow(() -> new RuntimeException("ROLE_ADMIN not found in DB"));
+        // assign group
+        keycloakService.addUserToGroup(UUID.fromString(keycloakUserId), "GIGTASKER_ADMIN_USERS");
 
-        user.getRoles().add(adminRoleEntity);
+        // add ROLE_ADMIN locally
+        Role adminRole = roleService.findRoleByName(RoleType.ROLE_ADMIN)
+                .orElseThrow(() -> new RuntimeException("ROLE_ADMIN missing"));
+
+        user.getRoles().add(adminRole);
         userRepository.save(user);
+
         log.info("Promoted {} to ADMIN", user.getEmail());
     }
 
     @Transactional
     public void deleteUser(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND));
 
         updateKeycloakStatus(user.getKeycloakId(), false);
 
@@ -191,7 +176,7 @@ public class UserService {
     @Transactional
     public void purgeUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND));
 
         try {
             keycloakBot.realm(GIGTASKER).users().get(user.getKeycloakId().toString()).remove();
@@ -213,7 +198,7 @@ public class UserService {
     @Transactional
     public UserDTO updateUser(UUID keycloakId, UserUpdateDTO updates) {
         User user = userRepository.findByKeycloakId(keycloakId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND));
 
         return performUpdate(user, updates);
     }
@@ -245,7 +230,7 @@ public class UserService {
     @Transactional
     public UserDTO updateProfileImage(UUID keycloakId, MultipartFile file) {
         User user = userRepository.findByKeycloakId(keycloakId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(USER_NOT_FOUND));
 
         // Upload to MinIO -> Returns key (e.g., "avatars/uuid.jpg")
         String imageKey = storageService.uploadProfileImage(keycloakId, file);

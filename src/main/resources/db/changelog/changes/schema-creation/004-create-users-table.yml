@@ -1,12 +1,12 @@
 databaseChangeLog:
   - changeSet:
-      id: create-gig-users-table
+      id: create-users-table
       author: utkarsh.lohani
       changes:
 
-        # Main gig_users table
+        # Main users table
         - createTable:
-            tableName: gig_users
+            tableName: users
             columns:
               - column:
                   name: id
@@ -70,7 +70,7 @@ databaseChangeLog:
 
         # Foreign key gender_id → genders.id
         - addForeignKeyConstraint:
-            baseTableName: gig_users
+            baseTableName: users
             baseColumnNames: gender_id
             referencedTableName: genders
             referencedColumnNames: id
@@ -79,7 +79,7 @@ databaseChangeLog:
 
         # Foreign key country_id → countries.id
         - addForeignKeyConstraint:
-            baseTableName: gig_users
+            baseTableName: users
             baseColumnNames: country_id
             referencedTableName: countries
             referencedColumnNames: id
@@ -89,42 +89,42 @@ databaseChangeLog:
         # Indexes for lookup performance
         - createIndex:
             indexName: idx_users_username
-            tableName: gig_users
+            tableName: users
             columns:
               - column:
                   name: username
 
         - createIndex:
             indexName: idx_users_email
-            tableName: gig_users
+            tableName: users
             columns:
               - column:
                   name: email
 
         - createIndex:
             indexName: idx_users_keycloak_id
-            tableName: gig_users
+            tableName: users
             columns:
               - column:
                   name: keycloak_id
 
         - createIndex:
             indexName: idx_users_gender_id
-            tableName: gig_users
+            tableName: users
             columns:
               - column:
                   name: gender_id
 
         - createIndex:
             indexName: idx_users_country_id
-            tableName: gig_users
+            tableName: users
             columns:
               - column:
                   name: country_id
 
         - createIndex:
             indexName: idx_users_is_deleted
-            tableName: gig_users
+            tableName: users
             columns:
               - column:
                   name: is_deleted
@@ -159,7 +159,7 @@ databaseChangeLog:
         - addForeignKeyConstraint:
             baseTableName: users_roles
             baseColumnNames: user_id
-            referencedTableName: gig_users
+            referencedTableName: users
             referencedColumnNames: id
             constraintName: fk_users_roles_user
             onDelete: CASCADE
@@ -207,44 +207,44 @@ databaseChangeLog:
             tableName: users_roles
 
   # ------------------------------------------
-  # ROLLBACK for gig_users table
+  # ROLLBACK for users table
   # ------------------------------------------
   - changeSet:
-      id: rollback-gig-users
-      author: yourname
+      id: rollback-users
+      author: utkarsh.lohani
       changes: []
       rollback:
         - dropIndex:
-            tableName: gig_users
+            tableName: users
             indexName: idx_users_is_deleted
 
         - dropIndex:
-            tableName: gig_users
+            tableName: users
             indexName: idx_users_country_id
 
         - dropIndex:
-            tableName: gig_users
+            tableName: users
             indexName: idx_users_gender_id
 
         - dropIndex:
-            tableName: gig_users
+            tableName: users
             indexName: idx_users_keycloak_id
 
         - dropIndex:
-            tableName: gig_users
+            tableName: users
             indexName: idx_users_email
 
         - dropIndex:
-            tableName: gig_users
+            tableName: users
             indexName: idx_users_username
 
         - dropForeignKeyConstraint:
-            baseTableName: gig_users
+            baseTableName: users
             constraintName: fk_user_country
 
         - dropForeignKeyConstraint:
-            baseTableName: gig_users
+            baseTableName: users
             constraintName: fk_user_gender
 
         - dropTable:
-            tableName: gig_users
+            tableName: users

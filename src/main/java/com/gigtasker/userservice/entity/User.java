@@ -17,10 +17,10 @@ import java.util.UUID;
 @Data
 @Entity
 @Builder
-@Table(name = "gig_users")
+@Table(name = "users")
 @AllArgsConstructor
 @NoArgsConstructor
-@SQLDelete(sql = "UPDATE gig_users SET is_deleted = true WHERE id = ?")
+@SQLDelete(sql = "UPDATE users SET is_deleted = true WHERE id = ?")
 @SQLRestriction("is_deleted = false")
 public class User {
 

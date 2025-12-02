@@ -15,25 +15,26 @@ import com.gigtasker.userservice.repository.SubRegionRepository;
 import com.gigtasker.userservice.service.AuthService;
 import com.gigtasker.userservice.service.RestCountriesService;
 import com.gigtasker.userservice.service.UserService;
+import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.admin.client.CreatedResponseUtil;
 import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.RolesResource;
 import org.keycloak.representations.idm.GroupRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class ReferenceDataSeeder implements CommandLineRunner {
+public class ApplicationBootstrapSeeder implements CommandLineRunner {
 
     private final GenderRepository genderRepository;
     private final RegionRepository regionRepository;
@@ -173,8 +174,8 @@ public class ReferenceDataSeeder implements CommandLineRunner {
                     "Admin",
                     LocalDate.of(1990, 1, 1),
                     "System",
-                    gender, // Pass the entity directly if your DTO logic handles it, or gender.getId()
-                    country // Pass entity or country.getId()
+                    gender,
+                    country
             );
 
             // ... rest of logic
@@ -191,7 +192,47 @@ public class ReferenceDataSeeder implements CommandLineRunner {
     }
 
     private void seedKeycloakStructure() {
-        log.info("Seeding Keycloak Groups...");
+        setKeycloakRealmRoles();
+        setKeycloakGroups();
+    }
+
+    private void setKeycloakRealmRoles() {
+        Map<String, String> rolesToCreate = Map.of(
+                "ROLE_USER", "Standard platform user",
+                "ROLE_ADMIN", "Administrator with elevated privileges"
+        );
+
+        RolesResource rolesResource = keycloakBot.realm(realmName).roles();
+
+        Set<String> existingRoles;
+        try {
+            existingRoles = getRealmRolesFromKeycloak();
+        } catch (Exception e) {
+            log.error("❌ Failed to fetch existing roles. Check 'user-service-bot' permissions!", e);
+            return;
+        }
+
+        rolesToCreate.forEach((roleName, roleDescription) -> {
+            if (existingRoles.contains(roleName)) {
+                log.info("Role {} already exists", roleName);
+                return;
+            }
+
+            log.info("Creating Role: {}", roleName);
+            RoleRepresentation role = new RoleRepresentation();
+            role.setName(roleName);
+            role.setDescription(roleDescription);
+
+            try {
+                rolesResource.create(role);
+                log.info("✅ Created realm role: {}", roleName);
+            } catch (Exception ex) {
+                log.error("❌ Failed to create realm role {}: {}", roleName, ex.getMessage());
+            }
+        });
+    }
+
+    private void setKeycloakGroups() {
         Map<String, String> map = Map.ofEntries(
                 Map.entry("GIGTASKER_USERS", RoleType.ROLE_USER.name()),
                 Map.entry("GIGTASKER_ADMIN_USERS", RoleType.ROLE_ADMIN.name())
@@ -199,20 +240,50 @@ public class ReferenceDataSeeder implements CommandLineRunner {
 
         map.forEach((groupName, groupRole) -> {
             try {
-                List<GroupRepresentation> existing = keycloakBot.realm(realmName)
-                        .groups().groups(groupName, 0, 1);
+                List<GroupRepresentation> existing = keycloakBot.realm(realmName).groups().groups(groupName, 0, 1);
 
                 if (existing.isEmpty()) {
+                    log.info("Creating Group: {}", groupName);
+
                     GroupRepresentation group = new GroupRepresentation();
                     group.setName(groupName);
-                    group.setRealmRoles(List.of(groupRole));
+                    // Note: Setting setRealmRoles here is ignored by Keycloak API during creation
 
-                    keycloakBot.realm(realmName).groups().add(group);
-                    log.info("Created Group: {}", groupName);
+                    try (Response response = keycloakBot.realm(realmName).groups().add(group)) {
+                        if (response.getStatus() == 201) {
+                            // 1. Get the ID of the new group
+                            String groupId = CreatedResponseUtil.getCreatedId(response);
+
+                            // 2. Find the Role we want to assign
+                            RoleRepresentation role = keycloakBot.realm(realmName)
+                                    .roles()
+                                    .get(groupRole)
+                                    .toRepresentation();
+
+                            // 3. Explicitly assign role to the group
+                            keycloakBot.realm(realmName)
+                                    .groups()
+                                    .group(groupId)
+                                    .roles()
+                                    .realmLevel()
+                                    .add(Collections.singletonList(role));
+
+                            log.info("✅ Created Group {} and assigned role {}", groupName, groupRole);
+                        } else {
+                            log.warn("Keycloak returned error {} while creating group {}", response.getStatus(), groupName);
+                        }
+                    }
                 }
             } catch (Exception e) {
-                log.warn("Failed to seed group {} with Role {} -||||- {}", groupName, groupRole, e.getMessage());
+                log.warn("Failed to seed group {} with Role {} - {}", groupName, groupRole, e.getMessage());
             }
         });
     }
+
+    private Set<String> getRealmRolesFromKeycloak() {
+        return keycloakBot.realm(realmName).roles().list().stream()
+                .map(RoleRepresentation::getName)
+                .collect(Collectors.toSet());
+    }
+
 }
