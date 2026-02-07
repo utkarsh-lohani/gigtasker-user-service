@@ -1,4 +1,4 @@
-FROM amazoncorretto:25
+FROM eclipse-temurin:25-jdk
 
 RUN dnf install -y --allowerasing curl
 
