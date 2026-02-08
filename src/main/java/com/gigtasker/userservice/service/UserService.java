@@ -1,6 +1,6 @@
 package com.gigtasker.userservice.service;
 
-import com.gigtasker.userservice.dto.UserDTO;
+import com.gigtasker.common.dto.UserDTO;
 import com.gigtasker.userservice.dto.UserUpdateDTO;
 import com.gigtasker.userservice.entity.Country;
 import com.gigtasker.userservice.entity.Gender;
@@ -9,6 +9,7 @@ import com.gigtasker.userservice.entity.User;
 import com.gigtasker.userservice.enums.RoleType;
 import com.gigtasker.userservice.exceptions.KeycloakException;
 import com.gigtasker.userservice.exceptions.ResourceNotFoundException;
+import com.gigtasker.userservice.mapper.UserMapper;
 import com.gigtasker.userservice.repository.CountryRepository;
 import com.gigtasker.userservice.repository.GenderRepository;
 import com.gigtasker.userservice.repository.UserRepository;
@@ -39,6 +40,7 @@ public class UserService {
     private final CountryRepository countryRepository;
     private final GenderRepository genderRepository;
     private final KeycloakService keycloakService;
+    private final UserMapper userMapper;
 
     private static final String GIGTASKER = "gigtasker";
 
@@ -46,7 +48,7 @@ public class UserService {
     private String bucketName;
 
     public UserService(UserRepository userRepository, StorageService storageService, KeycloakService keycloakService,
-                       @Qualifier("keycloakBot") Keycloak keycloakBot, RoleService roleService,
+                       @Qualifier("keycloakBot") Keycloak keycloakBot, RoleService roleService, UserMapper userMapper,
                        CountryRepository countryRepository, GenderRepository genderRepository) {
         this.userRepository = userRepository;
         this.keycloakBot = keycloakBot;
@@ -55,6 +57,7 @@ public class UserService {
         this.countryRepository = countryRepository;
         this.genderRepository = genderRepository;
         this.keycloakService = keycloakService;
+        this.userMapper = userMapper;
     }
 
     private static final String USER_NOT_FOUND = "User not found";
@@ -65,19 +68,19 @@ public class UserService {
         // And we save it in the form of User since User Entity exists in our DB
         // And we have returned the user back in UserDTO Format
         // DTO's are used to explicitly hide the actual Entity from being exposed
-        User user = User.builder().username(userDTO.getUsername()).email(userDTO.getEmail()).build();
+        User user = User.builder().username(userDTO.username()).email(userDTO.email()).build();
         User savedUser = userRepository.save(user);
-        return UserDTO.builder().username(savedUser.getUsername()).email(savedUser.getEmail()).build();
+        return userMapper.toDTO(savedUser);
     }
 
     @Transactional(readOnly = true)
     public UserDTO getUserById(Long id) {
-        return userRepository.findByIdWithRoles(id).map(UserDTO::fromEntity).orElse(null);
+        return userRepository.findByIdWithRoles(id).map(userMapper::toDTO).orElse(null);
     }
 
     @Transactional(readOnly = true)
     public UserDTO getUserByEmail(String email) {
-        return userRepository.findByEmail(email).map(UserDTO::fromEntity).orElse(null);
+        return userRepository.findByEmail(email).map(userMapper::toDTO).orElse(null);
     }
 
     @Transactional
@@ -101,7 +104,7 @@ public class UserService {
             user = userRepository.save(user);
         }
 
-        return UserDTO.fromEntity(user);
+        return userMapper.toDTO(user);
     }
 
     @SuppressWarnings("unchecked")
@@ -115,7 +118,7 @@ public class UserService {
     public List<UserDTO> findUsersByIds(List<Long> ids) {
         return userRepository.findByIdIn(ids)
                 .stream()
-                .map(UserDTO::fromEntity).toList();
+                .map(userMapper::toDTO).toList();
     }
 
     @Transactional
@@ -192,7 +195,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<UserDTO> getAllUsers() {
-        return userRepository.findAllWithRoles().stream().map(UserDTO::fromEntity).toList();
+        return userRepository.findAllWithRoles().stream().map(userMapper::toDTO).toList();
     }
 
     @Transactional
@@ -224,7 +227,7 @@ public class UserService {
 
         User savedUser = userRepository.save(user);
         log.info("Updated profile for user: {}", user.getEmail());
-        return UserDTO.fromEntity(savedUser);
+        return userMapper.toDTO(savedUser);
     }
 
     @Transactional
@@ -238,6 +241,6 @@ public class UserService {
         // Update DB
         user.setProfileImageUrl(imageKey);
 
-        return UserDTO.fromEntity(userRepository.save(user));
+        return userMapper.toDTO(userRepository.save(user));
     }
 }

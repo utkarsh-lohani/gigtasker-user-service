@@ -1,6 +1,6 @@
 package com.gigtasker.userservice.controller;
 
-import com.gigtasker.userservice.dto.UserDTO;
+import com.gigtasker.common.dto.UserDTO;
 import com.gigtasker.userservice.dto.UserUpdateDTO;
 import com.gigtasker.userservice.service.UserService;
 import lombok.RequiredArgsConstructor;

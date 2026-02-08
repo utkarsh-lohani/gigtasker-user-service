@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+// Dormant Code Previously Used When We Created Users Directly on Keycloak and Synced to our DB's
+
 @Service
 @Slf4j
 @RequiredArgsConstructor

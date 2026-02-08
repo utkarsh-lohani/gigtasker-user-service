@@ -1,9 +1,9 @@
 package com.gigtasker.userservice.controller;
 
+import com.gigtasker.common.dto.UserDTO;
 import com.gigtasker.userservice.dto.LoginRequest;
 import com.gigtasker.userservice.dto.RefreshRequest;
 import com.gigtasker.userservice.dto.RegistrationRequest;
-import com.gigtasker.userservice.dto.UserDTO;
 import com.gigtasker.userservice.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

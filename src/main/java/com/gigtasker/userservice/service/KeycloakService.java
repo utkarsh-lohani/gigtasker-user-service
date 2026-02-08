@@ -8,15 +8,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.CreatedResponseUtil;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
+import org.keycloak.admin.client.resource.RolesResource;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.GroupRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -42,7 +45,6 @@ public class KeycloakService {
         kcUser.setFirstName(req.firstName());
         kcUser.setLastName(req.lastName());
         kcUser.setEnabled(true);
-
         return kcUser;
     }
 
@@ -106,6 +108,119 @@ public class KeycloakService {
         List<UserRepresentation> result = users().searchByEmail(email, true);
         if (result.isEmpty()) return null;
         return result.getFirst().getId();
+    }
+
+    // ---------------------------
+    //  GET EXISTING REALM ROLES
+    // ---------------------------
+    public Set<String> getRealmRolesFromKeycloak() {
+        return keycloakBot.realm(realm).roles().list().stream()
+                .map(RoleRepresentation::getName)
+                .collect(Collectors.toSet());
+    }
+
+    // ---------------------------
+    //  CREATE GROUPS IN KEYCLOAK
+    // ---------------------------
+    public void createGroupsInKeyCloak(Map<String, String> map) {
+
+        map.forEach((groupName, groupRole) -> {
+            try {
+                List<GroupRepresentation> existing = keycloakBot.realm(realm).groups().groups(groupName, 0, 1);
+
+                if (existing.isEmpty()) {
+                    log.info("Creating Group: {}", groupName);
+
+                    GroupRepresentation group = new GroupRepresentation();
+                    group.setName(groupName);
+                    // Note: Setting setRealmRoles here is ignored by Keycloak API during creation
+
+                    try (Response response = keycloakBot.realm(realm).groups().add(group)) {
+                        if (response.getStatus() == 201) {
+                            // 1. Get the ID of the new group
+                            String groupId = CreatedResponseUtil.getCreatedId(response);
+
+                            // 2. Find the Role we want to assign
+                            RoleRepresentation role = keycloakBot.realm(realm)
+                                    .roles()
+                                    .get(groupRole)
+                                    .toRepresentation();
+
+                            // 3. Explicitly assign role to the group
+                            keycloakBot.realm(realm)
+                                    .groups()
+                                    .group(groupId)
+                                    .roles()
+                                    .realmLevel()
+                                    .add(Collections.singletonList(role));
+
+                            log.info("✅ Created Group {} and assigned role {}", groupName, groupRole);
+                        } else {
+                            log.warn("Keycloak returned error {} while creating group {}", response.getStatus(), groupName);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to seed group {} with Role {} - {}", groupName, groupRole, e.getMessage());
+            }
+        });
+    }
+
+    // ---------------------------
+    //  CREATE ROLES IN KEYCLOAK
+    // ---------------------------
+    public void createRolesInKeyCloak(Map<String, String> rolesToCreate) {
+
+        RolesResource rolesResource = keycloakBot.realm(realm).roles();
+
+        Set<String> existingRoles;
+        try {
+            existingRoles = getRealmRolesFromKeycloak();
+        } catch (Exception e) {
+            log.error("❌ Failed to fetch existing roles. Check 'user-service-bot' permissions!", e);
+            return;
+        }
+
+        rolesToCreate.forEach((roleName, roleDescription) -> {
+            if (existingRoles.contains(roleName)) {
+                log.info("Role {} already exists", roleName);
+                return;
+            }
+
+            log.info("Creating Role: {}", roleName);
+            RoleRepresentation role = new RoleRepresentation();
+            role.setName(roleName);
+            role.setDescription(roleDescription);
+
+            try {
+                rolesResource.create(role);
+                log.info("✅ Created realm role: {}", roleName);
+            } catch (Exception ex) {
+                log.error("❌ Failed to create realm role {}: {}", roleName, ex.getMessage());
+            }
+        });
+    }
+
+    // --- Sync Postgres User ID to Keycloak ---
+    public void updateUserAttribute(UUID keycloakId, String attributeName, String value) {
+        try {
+            UserResource userResource = users().get(keycloakId.toString());
+            UserRepresentation userRep = userResource.toRepresentation();
+
+            // Initialize attributes map if null
+            if (userRep.getAttributes() == null) {
+                userRep.setAttributes(new HashMap<>());
+            }
+
+            // Set the single attribute (e.g. internal_id = 501)
+            userRep.singleAttribute(attributeName, value);
+
+            userResource.update(userRep);
+            log.info("Synced attribute '{}'='{}' for user {}", attributeName, value, keycloakId);
+        } catch (Exception e) {
+            log.error("Failed to update user attribute", e);
+            throw new KeycloakException("Attribute sync failed");
+        }
     }
 
 }

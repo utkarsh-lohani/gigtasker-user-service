@@ -44,6 +44,7 @@ public class User {
     @Builder.Default
     private boolean isDeleted = false;
 
+    @Builder.Default
     @ManyToMany(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
             name = "users_roles",

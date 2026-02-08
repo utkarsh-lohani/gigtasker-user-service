@@ -20,7 +20,7 @@ public class SubRegion {
     private String name; // "Southern Asia"
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "region_id")
+    @JoinColumn(name = "region_id", nullable = false)
     @ToString.Exclude
     @JsonBackReference
     private Region region;

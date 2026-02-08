@@ -21,6 +21,13 @@ databaseChangeLog:
                     nullable: false
                     unique: true
 
+              - column:
+                  name: macro_region
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                    unique: false
+
         - createIndex:
             indexName: idx_regions_name
             tableName: regions
@@ -40,7 +47,7 @@ databaseChangeLog:
   # -----------------------------------------
   - changeSet:
       id: create-subregions-table
-      author: yourname
+      author: utkarsh.lohani
       changes:
         - createTable:
             tableName: subregions

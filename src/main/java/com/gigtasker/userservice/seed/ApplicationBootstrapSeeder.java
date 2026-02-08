@@ -8,21 +8,18 @@ import com.gigtasker.userservice.entity.Region;
 import com.gigtasker.userservice.entity.SubRegion;
 import com.gigtasker.userservice.enums.GenderType;
 import com.gigtasker.userservice.enums.RoleType;
+import com.gigtasker.userservice.exceptions.GenderNotFoundException;
 import com.gigtasker.userservice.repository.CountryRepository;
 import com.gigtasker.userservice.repository.GenderRepository;
 import com.gigtasker.userservice.repository.RegionRepository;
 import com.gigtasker.userservice.repository.SubRegionRepository;
 import com.gigtasker.userservice.service.AuthService;
+import com.gigtasker.userservice.service.KeycloakService;
 import com.gigtasker.userservice.service.RestCountriesService;
 import com.gigtasker.userservice.service.UserService;
-import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.keycloak.admin.client.CreatedResponseUtil;
-import org.keycloak.admin.client.Keycloak;
-import org.keycloak.admin.client.resource.RolesResource;
-import org.keycloak.representations.idm.GroupRepresentation;
-import org.keycloak.representations.idm.RoleRepresentation;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -43,10 +40,7 @@ public class ApplicationBootstrapSeeder implements CommandLineRunner {
     private final RestCountriesService restCountriesService;
     private final AuthService authService;
     private final UserService userService;
-    private final Keycloak keycloakBot;
-
-    @Value("${keycloak.bot.realm}")
-    private String realmName;
+    private final KeycloakService keycloakService;
 
     @Value("${app.seeding.enabled:true}")
     private boolean seedingEnabled;
@@ -57,17 +51,28 @@ public class ApplicationBootstrapSeeder implements CommandLineRunner {
     private static final String UNKNOWN = "Unknown";
 
     @Override
-    public void run(String... args) throws Exception {
+    public void run(String @NonNull ... args) {
         if (!seedingEnabled) {
             log.info("Seeding is disabled in config.");
             return;
         }
         seedKeycloakStructure();
         seedCountries();
-        seedAdminUser();
+        seedUsers();
     }
 
+    private record SeedUserRequest(
+            String username,
+            String email,
+            String firstName,
+            String lastName,
+            GenderType genderType,
+            String countryCode,
+            boolean isAdmin
+    ) {}
+
     private void seedCountries() {
+
         if (countryRepository.count() > 0) {
             log.info("Countries already seeded");
             return;
@@ -78,58 +83,70 @@ public class ApplicationBootstrapSeeder implements CommandLineRunner {
         Map<String, Region> regionMap = new HashMap<>();
         Map<String, SubRegion> subRegionMap = new HashMap<>();
 
-        List<Country> countriesToSave = new ArrayList<>();
-
+        // Build regions and subregions
         for (RestCountry apiCountry : apiCountries) {
-            String regionName = apiCountry.getRegion() != null ? apiCountry.getRegion() : UNKNOWN;
+
+            String continent = apiCountry.getContinents() != null && !apiCountry.getContinents().isEmpty()
+                    ? apiCountry.getContinents().getFirst() : UNKNOWN;
+
+            String macroRegion = apiCountry.getRegion() != null ? apiCountry.getRegion() : UNKNOWN;
+
             String subRegionName = apiCountry.getSubregion() != null ? apiCountry.getSubregion() : UNKNOWN;
 
-            regionMap.putIfAbsent(regionName,
-                    Region.builder().name(regionName).build()
+            regionMap.putIfAbsent(continent,
+                    Region.builder()
+                            .name(continent)
+                            .macroRegion(macroRegion)
+                            .build()
             );
 
-            Region region = regionMap.get(regionName);
+            Region region = regionMap.get(continent);
 
-            String key = regionName + "___" + subRegionName;
+            String key = continent + "___" + subRegionName;
 
             subRegionMap.putIfAbsent(key,
                     SubRegion.builder()
                             .name(subRegionName)
-                            .region(region) // still needed
+                            .region(region)
                             .build()
             );
         }
 
+        // Save regions
         List<Region> savedRegions = regionRepository.saveAll(regionMap.values());
         Map<String, Region> regionLookup = savedRegions.stream()
                 .collect(Collectors.toMap(Region::getName, r -> r));
 
+        // Save subregions
         List<SubRegion> subRegions = new ArrayList<>();
         for (SubRegion s : subRegionMap.values()) {
-            Region savedRegion = regionLookup.get(s.getRegion().getName());
-            s.setRegion(savedRegion);
+            s.setRegion(regionLookup.get(s.getRegion().getName()));
             subRegions.add(s);
         }
-
         subRegionRepository.saveAll(subRegions);
+
+        // Save countries (REGION ONLY)
+        List<Country> countries = new ArrayList<>();
 
         for (RestCountry apiCountry : apiCountries) {
 
-            String regionName = apiCountry.getRegion() != null ? apiCountry.getRegion() : UNKNOWN;
-            Region region = regionLookup.get(regionName);
+            String continent =
+                    apiCountry.getContinents() != null && !apiCountry.getContinents().isEmpty()
+                            ? apiCountry.getContinents().getFirst()
+                            : UNKNOWN;
 
             Country country = Country.builder()
                     .name(apiCountry.getName().getCommon())
                     .isoCode(apiCountry.getCca2())
                     .phoneCode(extractPhoneCode(apiCountry))
                     .currencyCode(extractCurrencyCode(apiCountry))
-                    .region(region)    // ONLY REGION
+                    .region(regionLookup.get(continent))
                     .build();
 
-            countriesToSave.add(country);
+            countries.add(country);
         }
 
-        countryRepository.saveAll(countriesToSave);
+        countryRepository.saveAll(countries);
     }
 
     private String extractPhoneCode(RestCountry c) {
@@ -150,44 +167,76 @@ public class ApplicationBootstrapSeeder implements CommandLineRunner {
         return c.getCurrencies().keySet().iterator().next();
     }
 
-    private void seedAdminUser() {
-        // Check if admin exists
-        if (!createAdmin || userService.getUserByEmail("admin-gigtasker@yopmail.com") != null) {
-            log.info("Default Admin User Already Exists");
+    private void seedUsers() {
+        // 2. Define users clearly
+        List<SeedUserRequest> usersToSeed = new ArrayList<>();
+
+        if (createAdmin) {
+            usersToSeed.add(new SeedUserRequest(
+                    "admin_gigtasker",
+                    "admin_gigtasker@yopmail.com",
+                    "Super",
+                    "Admin",
+                    GenderType.MAN,
+                    "US",
+                    true // Is Admin
+            ));
+        }
+
+        usersToSeed.add(new SeedUserRequest(
+                "user_gigtasker",
+                "user_gigtasker@yopmail.com",
+                "Regular",
+                "User",
+                GenderType.WOMAN,
+                "GB",
+                false // Not Admin
+        ));
+
+        // 3. Process the list
+        for (SeedUserRequest req : usersToSeed) {
+            seedSingleUser(req);
+        }
+    }
+
+    private void seedSingleUser(SeedUserRequest req) {
+        if (userService.getUserByEmail(req.email()) != null) {
+            log.info("User {} already exists. Skipping.", req.username());
             return;
         }
 
-        log.info("Creating Default Admin User...");
+        log.info("Creating User: {}...", req.username());
 
         try {
-            Gender gender = genderRepository.findByName(GenderType.MAN)
-                    .orElseThrow(() -> new RuntimeException("Gender 'MAN' not found in DB! Check Liquibase logs."));
+            Gender gender = genderRepository.findByName(req.genderType())
+                    .orElseThrow(() -> new GenderNotFoundException(req.genderType().name()));
 
-            Country country = countryRepository.findByIsoCode("US")
-                    .orElseThrow(() -> new RuntimeException("Country 'US' not found! RestCountries API might have failed."));
+            Country country = countryRepository.findByIsoCode(req.countryCode())
+                    .orElseThrow(() -> new NoSuchElementException("Country '" + req.countryCode() + "' not found!"));
 
-            RegistrationRequest adminReq = new RegistrationRequest(
-                    "admin-gigtasker",
-                    "admin-gigtasker@yopmail.com",
-                    "Test@123",
-                    "Super",
-                    "Admin",
+            RegistrationRequest regRequest = new RegistrationRequest(
+                    req.username(),
+                    req.email(),
+                    "Test@123", // Default password for seeds
+                    req.firstName(),
+                    req.lastName(),
                     LocalDate.of(1990, 1, 1),
-                    "System",
+                    null,
                     gender,
                     country
             );
 
-            // ... rest of logic
-            var userDto = authService.register(adminReq);
-            userService.promoteUserToAdmin(userDto.getId());
+            var userDto = authService.register(regRequest);
 
-            log.info("✅ Default Admin Created & Promoted.");
+            if (req.isAdmin()) {
+                userService.promoteUserToAdmin(userDto.id());
+                log.info("✅ Created & Promoted Admin: {}", req.username());
+            } else {
+                log.info("✅ Created Regular User: {}", req.username());
+            }
 
         } catch (Exception e) {
-            log.error("❌ Failed to seed Admin: ", e);
-            // Don't throw exception here, or it kills the whole app startup.
-            // Just log it so the app can still run.
+            log.error("❌ Failed to seed user {}: {}", req.username(), e.getMessage());
         }
     }
 
@@ -198,38 +247,11 @@ public class ApplicationBootstrapSeeder implements CommandLineRunner {
 
     private void setKeycloakRealmRoles() {
         Map<String, String> rolesToCreate = Map.of(
-                "ROLE_USER", "Standard platform user",
-                "ROLE_ADMIN", "Administrator with elevated privileges"
+                RoleType.ROLE_USER.name(), "Standard platform user",
+                RoleType.ROLE_ADMIN.name(), "Administrator with elevated privileges"
         );
 
-        RolesResource rolesResource = keycloakBot.realm(realmName).roles();
-
-        Set<String> existingRoles;
-        try {
-            existingRoles = getRealmRolesFromKeycloak();
-        } catch (Exception e) {
-            log.error("❌ Failed to fetch existing roles. Check 'user-service-bot' permissions!", e);
-            return;
-        }
-
-        rolesToCreate.forEach((roleName, roleDescription) -> {
-            if (existingRoles.contains(roleName)) {
-                log.info("Role {} already exists", roleName);
-                return;
-            }
-
-            log.info("Creating Role: {}", roleName);
-            RoleRepresentation role = new RoleRepresentation();
-            role.setName(roleName);
-            role.setDescription(roleDescription);
-
-            try {
-                rolesResource.create(role);
-                log.info("✅ Created realm role: {}", roleName);
-            } catch (Exception ex) {
-                log.error("❌ Failed to create realm role {}: {}", roleName, ex.getMessage());
-            }
-        });
+        keycloakService.createRolesInKeyCloak(rolesToCreate);
     }
 
     private void setKeycloakGroups() {
@@ -237,53 +259,7 @@ public class ApplicationBootstrapSeeder implements CommandLineRunner {
                 Map.entry("GIGTASKER_USERS", RoleType.ROLE_USER.name()),
                 Map.entry("GIGTASKER_ADMIN_USERS", RoleType.ROLE_ADMIN.name())
         );
-
-        map.forEach((groupName, groupRole) -> {
-            try {
-                List<GroupRepresentation> existing = keycloakBot.realm(realmName).groups().groups(groupName, 0, 1);
-
-                if (existing.isEmpty()) {
-                    log.info("Creating Group: {}", groupName);
-
-                    GroupRepresentation group = new GroupRepresentation();
-                    group.setName(groupName);
-                    // Note: Setting setRealmRoles here is ignored by Keycloak API during creation
-
-                    try (Response response = keycloakBot.realm(realmName).groups().add(group)) {
-                        if (response.getStatus() == 201) {
-                            // 1. Get the ID of the new group
-                            String groupId = CreatedResponseUtil.getCreatedId(response);
-
-                            // 2. Find the Role we want to assign
-                            RoleRepresentation role = keycloakBot.realm(realmName)
-                                    .roles()
-                                    .get(groupRole)
-                                    .toRepresentation();
-
-                            // 3. Explicitly assign role to the group
-                            keycloakBot.realm(realmName)
-                                    .groups()
-                                    .group(groupId)
-                                    .roles()
-                                    .realmLevel()
-                                    .add(Collections.singletonList(role));
-
-                            log.info("✅ Created Group {} and assigned role {}", groupName, groupRole);
-                        } else {
-                            log.warn("Keycloak returned error {} while creating group {}", response.getStatus(), groupName);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to seed group {} with Role {} - {}", groupName, groupRole, e.getMessage());
-            }
-        });
-    }
-
-    private Set<String> getRealmRolesFromKeycloak() {
-        return keycloakBot.realm(realmName).roles().list().stream()
-                .map(RoleRepresentation::getName)
-                .collect(Collectors.toSet());
+        keycloakService.createGroupsInKeyCloak(map);
     }
 
 }

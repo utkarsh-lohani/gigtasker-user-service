@@ -14,12 +14,18 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class Region {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    // "North America", "Europe", "Asia"
+    @Column(nullable = false)
     private String name;
+
+    // "Americas", "Europe", "Asia"
+    @Column(nullable = false)
+    private String macroRegion;
 
     @OneToMany(mappedBy = "region", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

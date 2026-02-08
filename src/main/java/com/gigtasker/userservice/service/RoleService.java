@@ -34,10 +34,10 @@ public class RoleService {
 
                 // 2. If match found, get the Entity from DB
                 roleRepository.findByRoleName(type).ifPresent(roles::add);
-            } catch (IllegalArgumentException e) {
+            } catch (IllegalArgumentException exception) {
                 // 3. If Keycloak sends a role we don't know (e.g. "offline_access"), IGNORE it.
                 // This prevents the app from crashing on unknown roles.
-                log.trace("Ignoring unknown Keycloak role: {}", roleName);
+                log.trace("Ignoring unknown Keycloak role: {} | {}", roleName, exception.getMessage());
             }
         }
 

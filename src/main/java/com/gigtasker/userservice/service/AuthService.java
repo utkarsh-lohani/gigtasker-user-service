@@ -1,16 +1,16 @@
 package com.gigtasker.userservice.service;
 
+import com.gigtasker.common.dto.UserDTO;
 import com.gigtasker.userservice.dto.LoginRequest;
 import com.gigtasker.userservice.dto.RefreshRequest;
 import com.gigtasker.userservice.dto.RegistrationRequest;
-import com.gigtasker.userservice.dto.UserDTO;
 import com.gigtasker.userservice.entity.Role;
 import com.gigtasker.userservice.entity.User;
 import com.gigtasker.userservice.enums.RoleType;
+import com.gigtasker.userservice.mapper.UserMapper;
 import com.gigtasker.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -33,8 +33,8 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final RoleService roleService;
-    private final Keycloak keycloakBot;
     private final KeycloakService keycloakService;
+    private final UserMapper userMapper;
 
     @Value("${keycloak.bot.server-url}")
     private String keycloakUrl;
@@ -74,7 +74,18 @@ public class AuthService {
                 .roles(Set.of(userRole))
                 .build();
 
-        return UserDTO.fromEntity(userRepository.save(newUser));
+        // 5a. Save and Flush to generate the Long ID
+        User savedUser = userRepository.save(newUser);
+
+        // 6. SYNC BACK: Update Keycloak with the Internal Long ID
+        // This allows us to map the claim 'internal_id' in Keycloak tokens
+        keycloakService.updateUserAttribute(
+                keycloakId,
+                "internal_user_db_id",
+                String.valueOf(savedUser.getId()) // Convert Long to String for Keycloak
+        );
+
+        return userMapper.toDTO(savedUser);
     }
 
     public Map<String, Object> login(LoginRequest req) throws LoginException {

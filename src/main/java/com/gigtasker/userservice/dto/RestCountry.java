@@ -11,8 +11,10 @@ public class RestCountry {
     private String cca2;
     private Idd idd;
     private Map<String, Currency> currencies;
-    private String region;
-    private String subregion;
+
+    private String region;        // "Americas"
+    private String subregion;     // "Caribbean"
+    private List<String> continents; // ["North America"]
 
     @Data
     public static class Name {
